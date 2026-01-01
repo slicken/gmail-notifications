@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"syscall"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/esiqveland/notify"
 	"github.com/godbus/dbus/v5"
 )
+
+var urlRegex = regexp.MustCompile(`https?://[^\s<>"]+`)
 
 var (
 	user          string
@@ -37,15 +40,15 @@ Environment Variables (required):
   GMAIL_READER             Gmail app password
 
 Options:
-  -b, --body <int>         Max body length for notifications (default: 1000, 0=disables body)
+  -b, --body <int>         Max body length for notifications (default: 500, 0=disables body)
   -r, --read <int>         Read last x emails to stdout and exit
   -h, --help               Show this help message
 `, os.Args[0])
 }
 
 func main() {
-	flag.IntVar(&bodyMaxLength, "b", 1000, "")
-	flag.IntVar(&bodyMaxLength, "body", 1000, "")
+	flag.IntVar(&bodyMaxLength, "b", 500, "")
+	flag.IntVar(&bodyMaxLength, "body", 500, "")
 	flag.IntVar(&readLast, "r", 0, "")
 	flag.IntVar(&readLast, "read", 0, "")
 	flag.BoolVar(&showHelp, "h", false, "")
@@ -69,7 +72,7 @@ func main() {
 
 	// Read last x emails and exit
 	if readLast > 0 {
-		readEmails(user, pass, readLast)
+		readEmails(user, pass, readLast, nil)
 		return
 	}
 
@@ -81,12 +84,12 @@ func main() {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
-	checkMail(user, pass, &lastUID)
+	readEmails(user, pass, 1, &lastUID)
 
 	for {
 		select {
 		case <-ticker.C:
-			checkMail(user, pass, &lastUID)
+			readEmails(user, pass, 1, &lastUID)
 		case <-sigChan:
 			return
 		}
@@ -106,6 +109,37 @@ func loadUID() uint32 {
 	return uint32(uid)
 }
 
+// truncateBody truncates text without cutting URLs
+// If cutting would split a URL, cuts before the URL instead
+func truncateBody(text string, maxLen int) string {
+	if len(text) <= maxLen {
+		return text
+	}
+
+	// Find all URLs and their positions
+	urls := urlRegex.FindAllStringIndex(text, -1)
+
+	// Find safe cut point
+	cutPoint := maxLen - 3 // leave room for "..."
+
+	for _, url := range urls {
+		urlStart, urlEnd := url[0], url[1]
+
+		// If cut point is inside a URL, move it before the URL
+		if cutPoint > urlStart && cutPoint < urlEnd {
+			cutPoint = urlStart
+			break
+		}
+	}
+
+	// If cut point is 0 or negative (URL at start is too long), skip body
+	if cutPoint <= 0 {
+		return ""
+	}
+
+	return text[:cutPoint] + "..."
+}
+
 func sendNotification(sender, subject, body string) {
 	conn, err := dbus.SessionBus()
 	if err != nil {
@@ -121,7 +155,10 @@ func sendNotification(sender, subject, body string) {
 	})
 }
 
-func checkMail(user, pass string, lastUID *uint32) {
+// readEmails fetches emails from Gmail
+// count: number of emails to fetch
+// lastUID: if not nil, only process emails newer than this UID and update it
+func readEmails(user, pass string, count int, lastUID *uint32) {
 	c, err := client.DialTLS("imap.gmail.com:993", nil)
 	if err != nil {
 		return
@@ -134,100 +171,19 @@ func checkMail(user, pass string, lastUID *uint32) {
 
 	mbox, _ := c.Select("INBOX", false)
 	if mbox.Messages == 0 {
-		return
-	}
-
-	seqset := new(imap.SeqSet)
-	seqset.AddNum(mbox.Messages)
-
-	// Fetch Envelope, UID, and optionally Body
-	section := &imap.BodySectionName{}
-	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
-	if bodyMaxLength > 0 {
-		items = append(items, section.FetchItem())
-	}
-
-	messages := make(chan *imap.Message, 1)
-	go func() {
-		c.Fetch(seqset, items, messages)
-	}()
-
-	if msg, ok := <-messages; ok {
-		if *lastUID != 0 && msg.Uid > *lastUID {
-			sender := msg.Envelope.From[0].Address()
-			subject := msg.Envelope.Subject
-			date := msg.Envelope.Date.Format("2006-01-02 15:04")
-
-			// Parse Body if enabled
-			bodyText := ""
-			if bodyMaxLength > 0 {
-				if r := msg.GetBody(section); r != nil {
-					mr, err := mail.CreateReader(r)
-					if err == nil {
-						for {
-							p, err := mr.NextPart()
-							if err == io.EOF {
-								break
-							}
-							if err != nil {
-								break
-							}
-							switch h := p.Header.(type) {
-							case *mail.InlineHeader:
-								contentType, _, _ := h.ContentType()
-								if contentType == "text/plain" {
-									b, _ := io.ReadAll(p.Body)
-									bodyText = string(b)
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// Truncate for display
-			displayBody := bodyText
-			if bodyMaxLength > 0 && len(displayBody) > bodyMaxLength {
-				displayBody = displayBody[:bodyMaxLength-3] + "..."
-			}
-
-			fmt.Printf("─────────────────────────────────────────\n")
-			fmt.Printf("From: %s\nDate: %s\nSubject: %s\n\n%s\n", sender, date, subject, displayBody)
-			sendNotification(sender, subject, displayBody)
-		}
-		*lastUID = msg.Uid
-		saveUID(msg.Uid)
-	}
-}
-
-func readEmails(user, pass string, count int) {
-	c, err := client.DialTLS("imap.gmail.com:993", nil)
-	if err != nil {
-		fmt.Println("Connection error:", err)
-		return
-	}
-	defer c.Logout()
-
-	if err := c.Login(user, pass); err != nil {
-		fmt.Println("Login error:", err)
-		return
-	}
-
-	mbox, _ := c.Select("INBOX", false)
-	if mbox.Messages == 0 {
-		fmt.Println("No messages")
 		return
 	}
 
 	// Calculate range for last x emails
-	from := uint32(1)
-	if mbox.Messages > uint32(count) {
+	from := mbox.Messages
+	if uint32(count) < mbox.Messages {
 		from = mbox.Messages - uint32(count) + 1
 	}
 
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(from, mbox.Messages)
 
+	// Fetch Envelope, UID, and optionally Body
 	section := &imap.BodySectionName{}
 	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
 	if bodyMaxLength > 0 {
@@ -240,6 +196,15 @@ func readEmails(user, pass string, count int) {
 	}()
 
 	for msg := range messages {
+		// In daemon mode, skip already seen emails and update UID
+		if lastUID != nil {
+			if *lastUID != 0 && msg.Uid <= *lastUID {
+				continue
+			}
+			*lastUID = msg.Uid
+			saveUID(msg.Uid)
+		}
+
 		sender := msg.Envelope.From[0].Address()
 		subject := msg.Envelope.Subject
 		date := msg.Envelope.Date.Format("2006-01-02 15:04")
@@ -270,9 +235,7 @@ func readEmails(user, pass string, count int) {
 				}
 			}
 
-			if len(bodyText) > bodyMaxLength {
-				bodyText = bodyText[:bodyMaxLength-3] + "..."
-			}
+			bodyText = truncateBody(bodyText, bodyMaxLength)
 		}
 
 		fmt.Printf("─────────────────────────────────────────\n")

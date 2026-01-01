@@ -14,6 +14,6 @@ export GMAIL_READER="your-app-password"
 
 | Flag | Description |
 |------|-------------|
-| `-b`, `--body` | Max body length for notifications (default: 1000, 0 disables body) |
+| `-b`, `--body` | Max body length for notifications (default: 500, 0=disables body) |
 | `-r`, `--read` | Read last x emails to stdout and exit |
 | `-h`, `--help` | Show help message |
