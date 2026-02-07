@@ -1,4 +1,4 @@
-module gmail-reader
+module gmail-notifications
 
 go 1.25.4
 

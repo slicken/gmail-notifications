@@ -31,7 +31,7 @@ var (
 const uidFile = ".gmail_last_uid.txt"
 
 func usage() {
-	fmt.Printf(`Gmail Desktop Notifier - Monitors Gmail and sends desktop notifications
+	fmt.Printf(`Gmail Notifications - Monitors Gmail and sends desktop notifications
 
 Usage: %s [OPTIONS]
 
@@ -148,7 +148,7 @@ func sendNotification(sender, subject, body string) {
 	notifier, _ := notify.New(conn)
 
 	_, _ = notifier.SendNotification(notify.Notification{
-		AppName:       "Gmail",
+		AppName:       "Gmail Notifications",
 		Summary:       fmt.Sprintf("From: %s", sender),
 		Body:          fmt.Sprintf("<b>%s</b>\n\n%s", subject, body),
 		ExpireTimeout: 10000, // 10 seconds

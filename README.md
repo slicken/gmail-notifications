@@ -1,4 +1,4 @@
-# Gmail Desktop Notifier for Ubuntu
+# Gmail Notifications
 
 A lightweight Go service that monitors your Gmail inbox via IMAP and sends native Ubuntu desktop notifications for new emails. Displays sender, subject, and a snippet of the email body directly in your system tray. Runs as a background daemon, checking for new messages every 15 seconds.
 
