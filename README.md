@@ -6,7 +6,7 @@ A lightweight Go service that monitors your Gmail inbox via IMAP and sends nativ
 
 ```bash
 export GMAIL_USER="your-email@gmail.com"
-export GMAIL_READER="your-app-password"
+export GMAIL_NOTIFICATIONS="your-app-password"
 ./gmail-reader
 ```
 
