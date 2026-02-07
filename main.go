@@ -21,11 +21,11 @@ import (
 var urlRegex = regexp.MustCompile(`https?://[^\s<>"]+`)
 
 var (
-	user          string
-	pass          string
-	bodyMaxLength int
-	readLast      int
-	showHelp      bool
+	user      string
+	pass      string
+	msgLenght int
+	readLast  int
+	showHelp  bool
 )
 
 const uidFile = ".gmail_last_uid.txt"
@@ -40,15 +40,15 @@ Environment Variables (required):
   GMAIL_READER             Gmail app password
 
 Options:
-  -b, --body <int>         Max body length for notifications (default: 500, 0=disables body)
+  -l, --length <int>       Message body length for notifications (default: 500, 0=disable)
   -r, --read <int>         Read last x emails to stdout and exit
   -h, --help               Show this help message
 `, os.Args[0])
 }
 
 func main() {
-	flag.IntVar(&bodyMaxLength, "b", 500, "")
-	flag.IntVar(&bodyMaxLength, "body", 500, "")
+	flag.IntVar(&msgLenght, "l", 500, "")
+	flag.IntVar(&msgLenght, "length", 500, "")
 	flag.IntVar(&readLast, "r", 0, "")
 	flag.IntVar(&readLast, "read", 0, "")
 	flag.BoolVar(&showHelp, "h", false, "")
@@ -183,10 +183,10 @@ func readEmails(user, pass string, count int, lastUID *uint32) {
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(from, mbox.Messages)
 
-	// Fetch Envelope, UID, and optionally Body
-	section := &imap.BodySectionName{}
+	// Fetch Envelope, UID, and optionally Body (Peek=true to not mark as read)
+	section := &imap.BodySectionName{Peek: true}
 	items := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
-	if bodyMaxLength > 0 {
+	if msgLenght > 0 {
 		items = append(items, section.FetchItem())
 	}
 
@@ -211,7 +211,7 @@ func readEmails(user, pass string, count int, lastUID *uint32) {
 
 		// Parse Body if enabled
 		bodyText := ""
-		if bodyMaxLength > 0 {
+		if msgLenght > 0 {
 			if r := msg.GetBody(section); r != nil {
 				mr, err := mail.CreateReader(r)
 				if err == nil {
@@ -235,7 +235,7 @@ func readEmails(user, pass string, count int, lastUID *uint32) {
 				}
 			}
 
-			bodyText = truncateBody(bodyText, bodyMaxLength)
+			bodyText = truncateBody(bodyText, msgLenght)
 		}
 
 		fmt.Printf("─────────────────────────────────────────\n")
