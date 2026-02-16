@@ -1,0 +1,21 @@
+[Unit]
+Description=Gmail Notifications Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=slk
+ExecStart=/home/slk/slicken/go/notifications/gmail-notifications
+Restart=always
+RestartSec=10
+
+# Environment variables for Gmail
+Environment=GMAIL_USER="your@gmail.com"
+Environment=GMAIL_NOTIFICATIONS="your_app_password"
+
+# CRITICAL: This allows the service to talk to your Desktop Notification tray
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
+[Install]
+WantedBy=default.target

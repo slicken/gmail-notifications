@@ -65,8 +65,8 @@ func main() {
 		fmt.Println("Error: GMAIL_USER (gmail address) environment variable must be set")
 		os.Exit(1)
 	}
-	if pass = os.Getenv("GMAIL_READER"); pass == "" {
-		fmt.Println("Error: GMAIL_READER (app password) environment variable must be set")
+	if pass = os.Getenv("GMAIL_NOTIFICATIONS"); pass == "" {
+		fmt.Println("Error: GMAIL_NOTIFICATIONS (app password) environment variable must be set")
 		os.Exit(1)
 	}
 
